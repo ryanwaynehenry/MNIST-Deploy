@@ -149,6 +149,13 @@ def load_and_transform_image():
         return jsonify({'error': 'No selected file'})
 
     if file:
+        torch.set_float32_matmul_precision('medium')
+        modelWeightsFile = 'model_weights.pth'
+
+        model = CNNClassifier()
+        model.load_state_dict(torch.load(modelWeightsFile))
+        model.eval()
+
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
@@ -177,12 +184,7 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
-    torch.set_float32_matmul_precision('medium')
-    modelWeightsFile = 'model_weights.pth'
 
-    model = CNNClassifier()
-    model.load_state_dict(torch.load(modelWeightsFile))
-    model.eval()
 
     if RUN_SINGLE_OUTPUT:
         app.run(debug=True)
