@@ -5,14 +5,9 @@ from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import MNIST
 from torchvision import datasets, transforms
 from pytorch_lightning import LightningModule, Trainer
-from sklearn.metrics import confusion_matrix, roc_curve, auc
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import itertools
 from PIL import Image
 from flask import Flask, jsonify, request, render_template, url_for
-from io import BytesIO
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -142,71 +137,7 @@ class CNNClassifier(LightningModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=WORKER_SIZE)
 
-def plot_confusion_matrix(cm, classes):
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix')
-    plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
 
-    fmt = 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
-
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.tight_layout()
-    plt.show()
-
-def visualize_filters(model):
-    filters = model.layer1[0].weight.data.clone()
-    #filters = model.layer2[0].weight.data.clone()
-    n_filters = filters.shape[0]
-    plt.figure(figsize=(8, 6))
-    for i in range(n_filters):
-        plt.subplot(4, 4, i + 1)
-        #plt.subplot(4, 4, i + 1)
-        plt.imshow(filters[i, 0, :, :], cmap='gray')
-        plt.axis('off')
-    plt.show()
-
-def visualize_feature_maps(model, dataloader):
-    # Function to visualize feature maps
-    def forward_hook(module, input, output):
-        # Store the output for visualization
-        model.feature_maps.append(output)
-
-    # Register hooks to all convolutional layers
-    hooks = []
-    for layer in [model.layer1, model.layer2]:
-        hooks.append(layer[0].register_forward_hook(forward_hook))
-
-    # Get a batch of data
-    images, _ = next(iter(dataloader))
-    model.feature_maps = []
-    with torch.no_grad():
-        model(images[:1])  # Pass one image through the network
-
-    # Plot feature maps
-    for layer_maps in model.feature_maps:
-        n_maps = layer_maps.shape[1]
-        plt.figure(figsize=(8, 6))
-        for i in range(n_maps):
-            if n_maps <= 16:
-                plt.subplot(4, 4, i + 1)
-            else:
-                plt.subplot(6, 6, i + 1)
-            plt.imshow(layer_maps[0, i, :, :].cpu(), cmap='gray')
-            plt.axis('off')
-        plt.show()
-
-    # Remove hooks (to avoid memory leaks)
-    for hook in hooks:
-        hook.remove()
 
 @app.route('/upload', methods=['GET', 'POST'])
 def load_and_transform_image():
@@ -255,27 +186,5 @@ if __name__ == '__main__':
 
     if RUN_SINGLE_OUTPUT:
         app.run(debug=True)
-
-    else:
-        early_stop_callback = pytorch_lightning.callbacks.EarlyStopping(
-            monitor='crossEntropy', patience=2, strict=False, verbose=True, mode='min')
-
-        trainer = Trainer(accelerator='gpu', devices=1, max_epochs=10, callbacks=[early_stop_callback])
-
-        model.load_state_dict(torch.load(modelWeightsFile))
-        model.eval()
-
-        trainer.test(model)
-
-        visualize_filters(model)
-        model.setup()
-        visualize_feature_maps(model, model.train_dataloader())
-
-    #test_labels = model.test_labels.cpu()
-    #test_predictions = model.test_predictions.cpu()
-    #cm = confusion_matrix(test_labels, test_predictions)
-    #classes = list(range(10))
-    #plot_confusion_matrix(cm, classes)
-
 
 
