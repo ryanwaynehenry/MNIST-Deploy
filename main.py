@@ -9,6 +9,7 @@ import os
 from PIL import Image
 from flask import Flask, jsonify, request, render_template, url_for
 from werkzeug.utils import secure_filename
+import numpy as np
 
 app = Flask(__name__)
 
@@ -18,8 +19,10 @@ USE_EXISTING_MODEL = True
 RUN_SINGLE_OUTPUT = True
 
 UPLOAD_FOLDER = 'static' + os.sep + 'uploads'
+RESIZED_FOLDER = 'static' + os.sep + 'resized'
 #UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['RESIZED_FOLDER'] = RESIZED_FOLDER
 
 
 class CNNClassifier(LightningModule):
@@ -155,15 +158,35 @@ def load_and_transform_image():
 
         origImage = Image.open(filepath)
         image = origImage.convert('L')
+        image_array = np.array(image)
+        if np.mean(image_array) > 128:
+            print("Inverting image")
+            image = Image.eval(image, lambda x: 255 -x)
+
+        threshold = 80
+        image_array = np.array(image)
+        image_array = np.where(image_array > threshold, 255, 0).astype(np.uint8)
+        image = Image.fromarray(image_array)
+
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
         image = image.resize((28, 28))
+
+        resized_filename = 'transformed_' + filename
+        resized_filepath = os.path.join(app.config['RESIZED_FOLDER'], resized_filename)
+        image.save(resized_filepath)
+
         tensor_image = transform(image).unsqueeze(0)
         predicted_label = run_single_image(tensor_image)
+
+
         image_url = os.path.join('uploads', filename)
         image_url = image_url.replace('\\', '/')
-        print(filepath)
 
-        return render_template('result.html', image_url=image_url, label=predicted_label.item())
+        resized_image_url = os.path.join('resized', resized_filename)
+        resized_image_url = resized_image_url.replace('\\', '/')
+        #print(filepath)
+
+        return render_template('result.html', image_url=image_url, resized_image_url=resized_image_url, label=predicted_label.item())
 
 def run_single_image(tensor_image):
     torch.set_float32_matmul_precision('medium')

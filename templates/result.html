@@ -2,12 +2,33 @@
 <html>
 <head>
     <title>Prediction Result</title>
+    <style>
+        .image-container {
+            margin-bottom: 20px;
+        }
+        .original-image{
+            width: 200px;
+            height: auto;
+            display: block;
+        }
+        .mnist-image {
+            width: 200px;
+            height: auto;
+            display: block;
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
     <h1>Prediction Result</h1>
-    <div>
-        <img src="{{ url_for('static', filename=image_url) }}" alt="Uploaded Image">
-        <p>Predicted Label: {{ label }}</p>
+    <div class="image-container">
+        <p>Uploaded Image:</p>
+        <img class="original-image" src="{{ url_for('static', filename=image_url) }}" alt="Uploaded Image">
     </div>
+    <div class="image-container">
+        <p>MNIST Compatible Image:</p>
+        <img class="mnist-image" src="{{ url_for('static', filename=resized_image_url) }}" alt="MNIST Compatible Image">
+    </div>
+    <p>Predicted Label: {{ label }}</p>
 </body>
 </html>
