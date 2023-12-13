@@ -11,11 +11,20 @@ import numpy as np
 import os
 import itertools
 from PIL import Image
+from flask import Flask, jsonify, request, render_template, url_for
+from io import BytesIO
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
 
 BATCH_SIZE = 256
 WORKER_SIZE = 4
 USE_EXISTING_MODEL = True
 RUN_SINGLE_OUTPUT = True
+
+UPLOAD_FOLDER = 'static' + os.sep + 'uploads'
+#UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 class CNNClassifier(LightningModule):
@@ -199,47 +208,68 @@ def visualize_feature_maps(model, dataloader):
     for hook in hooks:
         hook.remove()
 
-def load_and_transform_image(image_path):
-    transform = transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-    image  = Image.open(image_path).convert('L')
-    return transform(image).unsqueeze(0)
+@app.route('/upload', methods=['GET', 'POST'])
+def load_and_transform_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'})
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'})
+
+    if file:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        origImage = Image.open(filepath)
+        image = origImage.convert('L')
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+        image = image.resize((28, 28))
+        tensor_image = transform(image).unsqueeze(0)
+        predicted_label = run_single_image(tensor_image)
+        image_url = os.path.join('uploads', filename)
+        image_url = image_url.replace('\\', '/')
+        print(filepath)
+
+        return render_template('result.html', image_url=image_url, label=predicted_label.item())
+
+def run_single_image(tensor_image):
+
+    with torch.no_grad():
+        output = model(tensor_image)
+        predicted_label = torch.argmax(output, dim=1)
+        return predicted_label
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 if __name__ == '__main__':
     torch.set_float32_matmul_precision('medium')
     modelWeightsFile = 'model_weights.pth'
 
-    if RUN_SINGLE_OUTPUT:
-        image_path = 'path'
-        model = CNNClassifier()
-        model.load_state_dict(torch.load(modelWeightsFile))
-        model.eval()
-
-        image_tensor = load_and_transform_image(image_path)
-        with torch.no_grad():
-            output = model(image_tensor)
-            predicted_label = torch.argmax(output, dim=1)
-            print(f"Predicted Label: {predicted_label.item()}")
-
-
-    early_stop_callback = pytorch_lightning.callbacks.EarlyStopping(
-        monitor='crossEntropy', patience=2, strict=False, verbose=True, mode='min')
-
     model = CNNClassifier()
-    trainer = Trainer(accelerator='gpu', devices=1, max_epochs=10, callbacks=[early_stop_callback])
+    model.load_state_dict(torch.load(modelWeightsFile))
+    model.eval()
 
-    if not USE_EXISTING_MODEL:
-        trainer.fit(model)
-        torch.save(model.state_dict(), modelWeightsFile)
+    if RUN_SINGLE_OUTPUT:
+        app.run(debug=True)
 
     else:
+        early_stop_callback = pytorch_lightning.callbacks.EarlyStopping(
+            monitor='crossEntropy', patience=2, strict=False, verbose=True, mode='min')
+
+        trainer = Trainer(accelerator='gpu', devices=1, max_epochs=10, callbacks=[early_stop_callback])
+
         model.load_state_dict(torch.load(modelWeightsFile))
         model.eval()
 
-    trainer.test(model)
+        trainer.test(model)
 
-    visualize_filters(model)
-    model.setup()
-    visualize_feature_maps(model, model.train_dataloader())
+        visualize_filters(model)
+        model.setup()
+        visualize_feature_maps(model, model.train_dataloader())
 
     #test_labels = model.test_labels.cpu()
     #test_predictions = model.test_predictions.cpu()
