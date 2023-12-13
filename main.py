@@ -140,7 +140,18 @@ class CNNClassifier(LightningModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=WORKER_SIZE)
 
+@app.route('/api', methods=['Post'])
+def api_load_and_transform_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'})
 
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'})
+
+    if file:
+        image_url, resized_image_url, predicted_label = load_process_and_save(file)
+        return jsonify({'predicted_label': predicted_label})
 
 @app.route('/upload', methods=['GET', 'POST'])
 def load_and_transform_image():
@@ -152,41 +163,44 @@ def load_and_transform_image():
         return jsonify({'error': 'No selected file'})
 
     if file:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        origImage = Image.open(filepath)
-        image = origImage.convert('L')
-        image_array = np.array(image)
-        if np.mean(image_array) > 128:
-            print("Inverting image")
-            image = Image.eval(image, lambda x: 255 -x)
-
-        threshold = 80
-        image_array = np.array(image)
-        image_array = np.where(image_array > threshold, 255, 0).astype(np.uint8)
-        image = Image.fromarray(image_array)
-
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-        image = image.resize((28, 28))
-
-        resized_filename = 'transformed_' + filename
-        resized_filepath = os.path.join(app.config['RESIZED_FOLDER'], resized_filename)
-        image.save(resized_filepath)
-
-        tensor_image = transform(image).unsqueeze(0)
-        predicted_label = run_single_image(tensor_image)
-
-
-        image_url = os.path.join('uploads', filename)
-        image_url = image_url.replace('\\', '/')
-
-        resized_image_url = os.path.join('resized', resized_filename)
-        resized_image_url = resized_image_url.replace('\\', '/')
-        #print(filepath)
+        image_url, resized_image_url, predicted_label = load_process_and_save(file)
 
         return render_template('result.html', image_url=image_url, resized_image_url=resized_image_url, label=predicted_label.item())
+
+def load_process_and_save(file):
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    origImage = Image.open(filepath)
+    image = origImage.convert('L')
+    image_array = np.array(image)
+    if np.mean(image_array) > 128:
+        print("Inverting image")
+        image = Image.eval(image, lambda x: 255 - x)
+
+    threshold = 80
+    image_array = np.array(image)
+    image_array = np.where(image_array > threshold, 255, 0).astype(np.uint8)
+    image = Image.fromarray(image_array)
+
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+    image = image.resize((28, 28))
+
+    resized_filename = 'transformed_' + filename
+    resized_filepath = os.path.join(app.config['RESIZED_FOLDER'], resized_filename)
+    image.save(resized_filepath)
+
+    tensor_image = transform(image).unsqueeze(0)
+    predicted_label = run_single_image(tensor_image)
+
+    image_url = os.path.join('uploads', filename)
+    image_url = image_url.replace('\\', '/')
+
+    resized_image_url = os.path.join('resized', resized_filename)
+    resized_image_url = resized_image_url.replace('\\', '/')
+
+    return image_url, resized_image_url, predicted_label
 
 def run_single_image(tensor_image):
     torch.set_float32_matmul_precision('medium')
