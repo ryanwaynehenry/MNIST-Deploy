@@ -151,7 +151,7 @@ def api_load_and_transform_image():
 
     if file:
         image_url, resized_image_url, predicted_label = load_process_and_save(file)
-        return jsonify({'predicted_label': predicted_label})
+        return jsonify({'predicted_label': predicted_label.item()})
 
 @app.route('/upload', methods=['GET', 'POST'])
 def load_and_transform_image():
